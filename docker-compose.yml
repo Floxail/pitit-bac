@@ -1,0 +1,46 @@
+# P'tit Bac behind an existing reverse proxy (e.g. Nginx Proxy Manager).
+#
+#   docker network create proxy            # once, if it does not exist
+#   docker network connect proxy nginx-proxy-manager   # once
+#   GAME_DOMAIN=pitit-bac.floxail.fr docker compose up -d --build
+#
+# Then in NPM: proxy host $GAME_DOMAIN -> http://pitit-bac-front:80,
+# "Websockets Support" enabled, Let's Encrypt certificate.
+
+services:
+  back:
+    build:
+      context: .
+      dockerfile: docker/back.Dockerfile
+    container_name: pitit-bac-back
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Websocket connections from any other origin are rejected.
+      ALLOWED_ORIGIN: https://${GAME_DOMAIN:-pitit-bac.floxail.fr}
+    volumes:
+      - back-data:/app/back/data
+    networks:
+      - internal
+
+  front:
+    build:
+      context: .
+      dockerfile: docker/front.Dockerfile
+      args:
+        VUE_APP_URL: https://${GAME_DOMAIN:-pitit-bac.floxail.fr}
+    container_name: pitit-bac-front
+    restart: unless-stopped
+    depends_on:
+      - back
+    networks:
+      - internal
+      - proxy
+
+volumes:
+  back-data:
+
+networks:
+  internal:
+  proxy:
+    external: true

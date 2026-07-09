@@ -1,7 +1,70 @@
 # Guide de mise en ligne
 
-Déploiement sur un serveur Linux classique : nginx sert le front statique et
-proxifie les websockets vers le backend Node, géré par systemd.
+Deux méthodes :
+
+- **A. Docker + Nginx Proxy Manager** — si le serveur a déjà un reverse
+  proxy Docker qui tient les ports 80/443 (ta config actuelle). Recommandé.
+- **B. Serveur nu** (nginx hôte + systemd) — si les ports sont libres.
+
+---
+
+## A. Docker + Nginx Proxy Manager
+
+Le jeu tourne en deux conteneurs (`pitit-bac-front` : statique + proxy
+websocket interne, `pitit-bac-back` : serveur Node). NPM route le domaine et
+gère le certificat.
+
+### A.1. Raccorder NPM à un réseau partagé (une seule fois)
+
+NPM doit pouvoir joindre le conteneur front par son nom :
+
+```bash
+docker network create proxy
+docker network connect proxy nginx-proxy-manager
+```
+
+### A.2. Lancer le jeu
+
+```bash
+cd ~/pitit-bac
+git pull
+GAME_DOMAIN=pitit-bac.floxail.fr docker compose up -d --build
+```
+
+`GAME_DOMAIN` règle à la fois `ALLOWED_ORIGIN` (backend) et `VUE_APP_URL`
+(previews sociales, au build). Défaut : `pitit-bac.floxail.fr`.
+
+### A.3. Créer le proxy host dans NPM (interface web, port 81)
+
+- **Domain Names** : `pitit-bac.floxail.fr`
+- **Scheme** : `http` · **Forward Hostname** : `pitit-bac-front` · **Port** : `80`
+- ✅ **Websockets Support** — obligatoire, sinon personne ne peut jouer
+- ✅ Block Common Exploits
+- Onglet **SSL** : Request a new SSL Certificate (Let's Encrypt),
+  ✅ Force SSL, ✅ HTTP/2
+
+### A.4. Vérifier
+
+1. `https://pitit-bac.floxail.fr` : le jeu s'affiche.
+2. Deux appareils : créer une partie, jouer une manche, voter, kick.
+3. Logs : `docker logs -f pitit-bac-back`.
+
+### A.5. Mettre à jour
+
+```bash
+cd ~/pitit-bac
+git pull
+# si les fontes ont été retirées du dépôt (cf. section 7), les remettre :
+ls front/src/assets/fonts/*.ttf || echo "MANQUE LES FONTES — scp avant build"
+GAME_DOMAIN=pitit-bac.floxail.fr docker compose up -d --build
+```
+
+Les statistiques cumulées survivent (volume `back-data`). Redémarrer le back
+coupe les parties en cours (état en mémoire).
+
+---
+
+## B. Serveur nu (nginx hôte + systemd)
 
 ## 1. Prérequis serveur
 
