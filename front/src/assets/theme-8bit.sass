@@ -1,0 +1,189 @@
+// 8-bit / retro dialog-box art direction.
+//
+// Structure only — every color goes through the --pb-* tokens, whose light
+// values live in App.vue and dark values in theme-dark.sass. The look:
+// windows with hard borders and title bars, hard offset shadows, square
+// corners, MS W98 UI everywhere, uppercase controls.
+
+@font-face
+  font-family: "MS W98 UI"
+  src: url("~@/assets/fonts/MSW98UI-Regular.ttf") format("truetype")
+  font-weight: 400
+  font-display: swap
+
+@font-face
+  font-family: "MS W98 UI"
+  src: url("~@/assets/fonts/MSW98UI-Bold.ttf") format("truetype")
+  font-weight: 700
+  font-display: swap
+
+// ---- Windows (cards, messages, notifications) ----
+
+.box, .notification, .message, .modal-card, .panel
+  border-radius: 0 !important
+
+.message, .box, .modal-card
+  border: 2px solid var(--pb-border)
+  box-shadow: 4px 4px 0 var(--pb-shadow) !important
+
+#app .notification
+  border: 2px solid var(--pb-border)
+  box-shadow: 4px 4px 0 var(--pb-shadow) !important
+
+  &.is-flat
+    box-shadow: none !important
+
+// Message headers become retro title bars, with a decorative ✕.
+// The `.is-primary` variants are listed to out-rank Buefy's colored ones.
+.message .message-header,
+.message.is-primary .message-header
+  background-color: var(--pb-titlebar-bg)
+  color: var(--pb-titlebar-text)
+  border-bottom: 2px solid var(--pb-border)
+  border-radius: 0
+  text-transform: uppercase
+  letter-spacing: .04em
+  font-weight: 700
+
+  &:after
+    content: "✕"
+    font-weight: 700
+    margin-left: auto
+    padding-left: 1rem
+
+.message .message-body,
+.message.is-primary .message-body
+  border: none
+  background-color: var(--pb-surface)
+  color: var(--pb-page-text)
+
+// The players list / share panels.
+.panel
+  border: 2px solid var(--pb-border)
+  box-shadow: 4px 4px 0 var(--pb-shadow)
+
+  .panel-heading
+    border-radius: 0
+    background-color: var(--pb-titlebar-bg)
+    color: var(--pb-titlebar-text)
+    border-bottom: 2px solid var(--pb-border)
+    text-transform: uppercase
+    letter-spacing: .04em
+    font-size: .95rem
+
+// ---- Controls ----
+
+.button,
+.button.is-primary,
+.button.is-primary.is-medium
+  border-radius: 0 !important
+  border: 2px solid var(--pb-border)
+  text-transform: uppercase
+  font-weight: 700
+  box-shadow: 3px 3px 0 var(--pb-shadow)
+  transition: none
+
+  &:hover:not([disabled])
+    box-shadow: 3px 3px 0 var(--pb-shadow)
+    border-color: var(--pb-border)
+
+  &:active:not([disabled])
+    transform: translate(3px, 3px)
+    box-shadow: none
+
+  &[disabled]
+    box-shadow: none
+    opacity: .5
+
+.input, .textarea, .taginput .taginput-container
+  border-radius: 0 !important
+  border-width: 2px
+  box-shadow: none
+
+  &:focus, &:focus-within
+    border-color: var(--pb-accent) !important
+    box-shadow: none !important
+
+.tag
+  border-radius: 0 !important
+  border: 2px solid var(--pb-border)
+  font-weight: 700
+
+  .delete
+    border-radius: 0
+    background-color: transparent
+    color: inherit
+
+    &:before, &:after
+      background-color: currentColor
+
+.dropdown-content
+  border-radius: 0
+  border: 2px solid var(--pb-border)
+  box-shadow: 4px 4px 0 var(--pb-shadow)
+
+  // Hovered/keyboard-highlighted entries invert, 1-bit style. Buefy marks
+  // them with `.is-hovered`, not just `:hover`.
+  a.dropdown-item:hover,
+  a.dropdown-item.is-hovered
+    background-color: var(--pb-page-text)
+    color: var(--pb-bg)
+
+// Square radios & checkboxes, green when picked.
+.b-radio.radio input[type="radio"] + .check,
+.b-checkbox.checkbox input[type="checkbox"] + .check
+  border-radius: 0 !important
+  border-width: 2px !important
+  border-color: var(--pb-border) !important
+
+.b-radio.radio input[type="radio"] + .check:before
+  border-radius: 0
+  background-color: var(--pb-accent) !important
+
+.b-checkbox.checkbox input[type="checkbox"]:checked + .check
+  background-color: var(--pb-accent) !important
+  border-color: var(--pb-border) !important
+
+// Square slider.
+.b-slider
+  .b-slider-track
+    border-radius: 0
+    border: 1px solid var(--pb-border)
+
+  .b-slider-fill
+    border-radius: 0
+    background-color: var(--pb-accent) !important
+
+  .b-slider-thumb
+    border-radius: 0 !important
+    border: 2px solid var(--pb-border) !important
+    background-color: var(--pb-surface) !important
+
+  .b-slider-tick
+    border-radius: 0
+
+// Tooltips.
+.b-tooltip:after
+  border-radius: 0 !important
+
+// Loading overlay text keeps the pixel voice.
+#app .loading-overlay p
+  font-weight: 700
+  text-transform: uppercase
+
+// Modal (suggestions).
+.modal-card
+  .modal-card-head, .modal-card-foot
+    border-radius: 0
+    border-bottom: 2px solid var(--pb-border)
+
+  .modal-card-foot
+    border-bottom: none
+    border-top: 2px solid var(--pb-border)
+
+  .modal-card-head
+    background-color: var(--pb-titlebar-bg)
+
+    .modal-card-title
+      color: var(--pb-titlebar-text)
+      text-transform: uppercase

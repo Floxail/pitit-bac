@@ -3,21 +3,18 @@
   "version": "1.0.0",
   "description": "In-browser real-time “Petit Bac” game websocket backend",
   "main": "index.js",
+  "type": "module",
   "dependencies": {
-    "esm": "^3.2.25",
     "uuid": "^7.0.2",
     "websocket": "^1.0.31",
     "ptitbac-commons": "file:../commons",
     "munin-http": "file:../munin"
   },
   "devDependencies": {},
-  "esm": {
-    "mode": "all"
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "back": "node index.js",
-    "prod": "NODE_ENV=production ALLOWED_ORIGIN=\"https://bac.morel.games\" node index.js"
+    "prod": "NODE_ENV=production node index.js"
   },
   "author": "Amaury Carrade",
   "license": "CECILL-B"

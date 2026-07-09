@@ -1,14 +1,24 @@
 @import "~bulma/sass/utilities/_all";
 
-$primary: #3f9718;
+// ---- 8-bit direction ----
+// Retro dialog-box UI: square corners everywhere, MS W98 UI as the only
+// typeface. Colors stay monochrome with the brand green as accent.
+$family-primary: "MS W98 UI", Tahoma, Geneva, Verdana, sans-serif;
+
+$radius-small: 0;
+$radius: 0;
+$radius-large: 0;
+
+// Minitel palette: slate blue of the inverted blocks on the CRT screen.
+$primary: #52708a;
 $primary-invert: findColorInvert($primary);
 
 // Should be used for background under white text
 // (insufficient contrast with $primary).
-$primary-dark: #338800;
+$primary-dark: #3f5a71;
 $primary-dark-invert: findColorInvert($primary-dark);
 
-$dark: #001F00;
+$dark: #10161c;
 $dark-invert: findColorInvert($dark);
 
 $less-dark: lighten($dark, 10%);

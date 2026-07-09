@@ -17,7 +17,11 @@ import {
   faUserAltSlash,
   faUserShield,
   faClipboard,
-  faAward
+  faAward,
+  faEye,
+  faEyeSlash,
+  faMoon,
+  faSun
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 
@@ -26,6 +30,15 @@ import "buefy/dist/buefy.css";
 
 import GameClient from "./game";
 import App from "./App.vue";
+import {
+  initial_theme,
+  apply_theme,
+  persist_theme,
+  watch_system_theme
+} from "./theme";
+
+// Apply the theme as early as possible to avoid a light flash.
+apply_theme(initial_theme());
 
 Vue.use(Vuex);
 Vue.use(Buefy, {
@@ -49,7 +62,11 @@ library.add(
   faUserAltSlash,
   faUserShield,
   faClipboard,
-  faAward
+  faAward,
+  faEye,
+  faEyeSlash,
+  faMoon,
+  faSun
 );
 
 Vue.component("vue-fontawesome", FontAwesomeIcon);
@@ -94,11 +111,13 @@ const store = new Vuex.Store({
       scores: [],
 
       // If the duration is set to this value, then the round will only
-      // stop when the first ends (if stopOnFirstCompletion) or when
+      // stop when the first ends (if endMode is "first") or when
       // all players end (else).
       infinite_duration: 600
     },
-    categories_by_everyone: false,
+    categories_mode: "master",
+    category_proposals: [],
+    theme: initial_theme(),
     search_engines: {
       Google: "http://www.google.com/search?q={s}",
       Qwant: "https://qwant.com/?q={s}&t=web"
@@ -114,8 +133,17 @@ const store = new Vuex.Store({
       state.sticky_players_list = fixed;
     },
 
-    set_categories_by_everyone(state, categories_by_everyone) {
-      state.categories_by_everyone = categories_by_everyone;
+    set_categories_mode(state, mode) {
+      state.categories_mode = mode;
+    },
+
+    set_theme(state, theme) {
+      state.theme = theme;
+      apply_theme(theme);
+    },
+
+    set_category_proposals(state, proposals) {
+      state.category_proposals = proposals;
     },
 
     set_countdown_task(state, task) {
@@ -185,16 +213,26 @@ const store = new Vuex.Store({
     }
   },
   actions: {
-    set_categories_by_everyone(context, { enabled, from_server }) {
-      context.commit("set_categories_by_everyone", enabled);
+    set_categories_mode(context, { mode, from_server }) {
+      context.commit("set_categories_mode", mode);
 
       if (!from_server) {
-        client.set_categories_by_everyone(enabled);
+        client.set_categories_mode(mode);
       }
+    },
+
+    update_category_proposals(context, proposals) {
+      context.commit("set_category_proposals", proposals);
     },
 
     ask_start_game() {
       client.ask_start_game();
+    },
+
+    toggle_theme(context) {
+      let theme = context.state.theme === "dark" ? "light" : "dark";
+      context.commit("set_theme", theme);
+      persist_theme(theme);
     },
 
     next_round_soon(context, countdown) {
@@ -235,6 +273,10 @@ const store = new Vuex.Store({
 
     round_finished() {
       client.send_answers();
+    },
+
+    round_countdown_started(context, duration) {
+      context.commit("update_time_left", duration);
     },
 
     end_round_and_send_answers(context) {
@@ -338,11 +380,14 @@ const store = new Vuex.Store({
 client.set_store(store);
 i18n.set_store(store);
 
+// Follow the system theme while the user has not chosen explicitly.
+watch_system_theme(theme => store.commit("set_theme", theme));
+
 i18n.load_locale_from_browser();
 
 store.commit("morel/update_configuration", {
   categories: [],
-  stopOnFirstCompletion: true,
+  endMode: "first",
   turns: 4,
   time: 400,
   alphabet: "",

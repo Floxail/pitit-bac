@@ -8,20 +8,7 @@
       <section>
         <div class="columns">
           <div class="column is-half is-column-with-start-button">
-            <b-field
-              :label="$t('Categories')"
-              :message="
-                master || categories_by_everyone
-                  ? (categories_by_everyone && !master
-                      ? $t('<strong>Everyone can update categories.</strong>') +
-                        ' '
-                      : '') +
-                    $t(
-                      'Write down the category you want, and press enter to add it; or use the suggestions link to enter pre-selected categories.'
-                    )
-                  : ''
-              "
-            >
+            <b-field :label="$t('Categories')" :message="categories_help">
               <template slot="label">
                 <div class="columns is-mobile">
                   <div class="column is-8">
@@ -46,20 +33,51 @@
                 @input="update_game_configuration"
                 @typing="update_suggestions"
                 :placeholder="$t('Add a category…')"
-                :disabled="!master && !categories_by_everyone"
+                :disabled="!can_edit_categories"
                 type="is-primary-dark"
               >
               </b-taginput>
             </b-field>
 
-            <div class="field no-extended-margin-top" v-if="master">
-              <b-switch
-                :value="categories_by_everyone"
-                @input="update_categories_by_everyone"
+            <p
+              class="proposals-info"
+              v-if="
+                categories_mode === 'proposals' && category_proposals.length > 0
+              "
+            >
+              <span
+                v-for="(proposal, i) in category_proposals"
+                :key="i"
+                class="proposal-info"
               >
-                {{ $t("Allow everyone to update categories") }}
-              </b-switch>
-            </div>
+                <i18n path="“{category}” proposed by {name}">
+                  <strong slot="category">{{ proposal.category }}</strong>
+                  <template slot="name">{{
+                    players[proposal.uuid]
+                      ? players[proposal.uuid].pseudonym
+                      : "?"
+                  }}</template>
+                </i18n>
+              </span>
+            </p>
+
+            <b-field
+              class="no-extended-margin-top"
+              :label="$t('Who can update categories?')"
+              v-if="master"
+            >
+              <div class="categories-mode-choices">
+                <b-radio
+                  v-for="mode in ['master', 'everyone', 'proposals']"
+                  :key="mode"
+                  :native-value="mode"
+                  :value="categories_mode"
+                  @input="update_categories_mode"
+                >
+                  {{ categories_mode_label(mode) }}
+                </b-radio>
+              </div>
+            </b-field>
             <div class="field start-button is-desktop">
               <b-tooltip
                 multilined
@@ -101,7 +119,13 @@
 
             <b-field>
               <template slot="label">
-                <i18n path="Time limit for each round: {limit}">
+                <i18n
+                  :path="
+                    is_timer_after_first
+                      ? 'Time left once the first player finishes: {limit}'
+                      : 'Time limit for each round: {limit}'
+                  "
+                >
                   <template slot="limit">
                     <span class="is-date-desktop">{{ actual_time }}</span>
                     <span class="is-date-mobile">{{ actual_time_mobile }}</span>
@@ -112,7 +136,7 @@
                 size="is-medium"
                 class="has-lots-of-ticks"
                 :min="15"
-                :max="infinite_duration"
+                :max="is_timer_after_first ? 540 : infinite_duration"
                 :step="15"
                 :tooltip="false"
                 :disabled="!master"
@@ -126,20 +150,27 @@
                     format_seconds(val)
                   }}</b-slider-tick>
                 </template>
-                <b-slider-tick :value="infinite_duration"
+                <b-slider-tick
+                  v-if="!is_timer_after_first"
+                  :value="infinite_duration"
                   >&infin;</b-slider-tick
                 >
               </b-slider>
             </b-field>
-            <div class="field">
-              <b-switch
-                :disabled="!master"
-                v-model="config.stopOnFirstCompletion"
-                @input="update_game_configuration"
-              >
-                {{ $t("Stop rounds as soon as the first player finishes") }}
-              </b-switch>
-            </div>
+            <b-field :label="$t('End of rounds')">
+              <div class="end-mode-choices">
+                <b-radio
+                  v-for="mode in ['first', 'timer', 'timerAfterFirst']"
+                  :key="mode"
+                  :native-value="mode"
+                  :disabled="!master"
+                  v-model="config.endMode"
+                  @input="update_end_mode"
+                >
+                  {{ end_mode_label(mode) }}
+                </b-radio>
+              </div>
+            </b-field>
           </div>
         </div>
       </section>
@@ -169,7 +200,7 @@
             <p class="modal-card-title">{{ $t("Categories suggestions") }}</p>
           </header>
           <section class="modal-card-body">
-            <div v-if="master || categories_by_everyone">
+            <div v-if="can_edit_categories">
               <p
                 v-t="
                   'Categories ideas are suggested below. You can always write your own categories directly—don\'t hesitate if you have original ideas or private references!'
@@ -194,7 +225,7 @@
                 class="tag is-medium"
                 :class="{
                   'is-primary': has_category(suggestion),
-                  'is-static': !master && !categories_by_everyone
+                  'is-static': !can_edit_categories
                 }"
                 v-for="(suggestion, i) in categories_group"
                 :key="i"
@@ -457,15 +488,52 @@ export default {
   computed: {
     ...mapState({
       master: state => state.morel.master,
-      categories_by_everyone: state => state.categories_by_everyone,
+      categories_mode: state => state.categories_mode,
+      category_proposals: state => state.category_proposals,
+      players: state => state.morel.players,
       infinite_duration: state => state.game.infinite_duration,
       config: state => state.morel.configuration
     }),
+    everyone_can_edit() {
+      return this.categories_mode === "everyone";
+    },
+    can_edit_categories() {
+      return this.master || this.categories_mode !== "master";
+    },
+    categories_help() {
+      if (!this.can_edit_categories) return "";
+
+      let help = this.$t(
+        "Write down the category you want, and press enter to add it; or use the suggestions link to enter pre-selected categories."
+      );
+
+      if (this.master) return help;
+
+      if (this.everyone_can_edit) {
+        return (
+          this.$t("<strong>Everyone can update categories.</strong>") +
+          " " +
+          help
+        );
+      }
+
+      // Proposals mode, non-master player.
+      return (
+        this.$t(
+          "<strong>You can add a single category of your own.</strong> The game master can remove it, like any other."
+        ) +
+        " " +
+        help
+      );
+    },
     locale() {
       return this.$i18n.locale;
     },
     flat_suggested_categories() {
       return Array.prototype.concat.apply([], this.suggested_categories);
+    },
+    is_timer_after_first() {
+      return this.config.endMode === "timerAfterFirst";
     },
     actual_time() {
       return this.$store.getters.is_time_infinite
@@ -650,7 +718,7 @@ export default {
     },
 
     toggle_category(category) {
-      if (!this.master && !this.categories_by_everyone) return;
+      if (!this.can_edit_categories) return;
 
       let index = this.config.categories.indexOf(category);
       if (index === -1) {
@@ -662,10 +730,47 @@ export default {
       this.update_game_configuration();
     },
 
-    update_categories_by_everyone() {
-      this.$store.dispatch("set_categories_by_everyone", {
-        enabled: !this.categories_by_everyone
-      });
+    end_mode_label(mode) {
+      const $t = this.$t.bind(this);
+
+      switch (mode) {
+        case "first":
+          return $t("Stop rounds as soon as the first player finishes");
+        case "timerAfterFirst":
+          return $t("The first player to finish starts the countdown");
+        default:
+          return $t("Time limit only");
+      }
+    },
+
+    update_end_mode() {
+      // The countdown duration cannot be infinite in "timer after first
+      // completion" mode: clamp it back to the largest allowed value.
+      if (
+        this.config.endMode === "timerAfterFirst" &&
+        this.config.time >= this.infinite_duration
+      ) {
+        this.config.time = 540;
+      }
+
+      this.update_game_configuration();
+    },
+
+    categories_mode_label(mode) {
+      const $t = this.$t.bind(this);
+
+      switch (mode) {
+        case "everyone":
+          return $t("Everyone");
+        case "proposals":
+          return $t("Everyone can proposes one");
+        default:
+          return $t("The game master only");
+      }
+    },
+
+    update_categories_mode(mode) {
+      this.$store.dispatch("set_categories_mode", { mode });
     },
 
     start_game() {
@@ -720,6 +825,33 @@ export default {
 label.switch span.control-label
   position: relative
   top: 2px
+
+.end-mode-choices, .categories-mode-choices
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  text-align: left
+
+  // Buefy separates inline radios with a left margin; in a vertical
+  // group this indents every radio but the first one.
+  .b-radio.radio + .radio
+    margin-left: 0
+
+  .b-radio.radio:not(:first-child)
+    margin-top: .4rem
+
+.proposals-info
+  margin-top: .35rem
+  text-align: left
+  font-size: .85em
+  color: $grey
+
+  .proposal-info
+    display: inline-block
+
+    &:not(:last-child):after
+      content: "·"
+      margin: 0 .5em
 
 div.column.is-half div.field:not(:first-child):not(.no-extended-margin-top)
   margin-top: 3rem

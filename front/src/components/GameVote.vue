@@ -101,9 +101,55 @@
                   }}
                 </p>
                 <ul class="answer-meta">
-                  <li class="is-pseudonym">{{ answer.author.pseudonym }}</li>
+                  <li
+                    class="is-pseudonym"
+                    v-if="answer.author.uuid === own_uuid"
+                    v-t="'You'"
+                  />
+                  <li
+                    class="is-pseudonym"
+                    v-else-if="is_revealed(category, answer.author.uuid)"
+                  >
+                    {{ answer.author.pseudonym }}
+                  </li>
+                  <li
+                    class="reveal-author"
+                    v-if="master && answer.author.uuid !== own_uuid"
+                  >
+                    <b-tooltip
+                      :label="
+                        is_revealed(category, answer.author.uuid)
+                          ? $t('Hide the author of this answer')
+                          : $t(
+                              'Reveal the author of this answer (only you will see it)'
+                            )
+                      "
+                      position="is-bottom"
+                      type="is-light"
+                      multilined
+                    >
+                      <a
+                        href="#"
+                        @click.prevent="
+                          toggle_reveal(category, answer.author.uuid)
+                        "
+                      >
+                        <b-icon
+                          :icon="
+                            is_revealed(category, answer.author.uuid)
+                              ? 'eye-slash'
+                              : 'eye'
+                          "
+                          size="is-small"
+                        />
+                      </a>
+                    </b-tooltip>
+                  </li>
                   <template v-if="answer.answer.valid">
-                    <li v-for="(search_engine, k) in Object.keys(search_engines)" :key="k">
+                    <li
+                      v-for="(search_engine, k) in Object.keys(search_engines)"
+                      :key="k"
+                    >
                       <b-tooltip
                         :label="
                           $t(
@@ -116,7 +162,13 @@
                         multilined
                       >
                         <a
-                          :href="search_url(search_engine, category, answer.answer.text)"
+                          :href="
+                            search_url(
+                              search_engine,
+                              category,
+                              answer.answer.text
+                            )
+                          "
                           target="search_engine"
                           >{{ search_engine }}</a
                         >
@@ -192,7 +244,8 @@ import { mapState } from "vuex";
 export default {
   data() {
     return {
-      ready: false
+      ready: false,
+      revealed_authors: {}
     };
   },
   computed: {
@@ -201,7 +254,8 @@ export default {
       votes: state => state.game.current_round.votes,
       players: state => state.morel.players,
       own_uuid: state => state.morel.uuid,
-      interrupted: state => state.morel.configuration.stopOnFirstCompletion,
+      master: state => state.morel.master,
+      interrupted: state => state.morel.configuration.endMode === "first",
       interrupted_by: state => {
         let interrupter =
           state.morel.players[state.game.current_round.interrupted_by];
@@ -244,17 +298,31 @@ export default {
         });
       });
 
-      answers.sort((a, b) =>
-        a.author.pseudonym
+      // Answers are displayed anonymously: sorting by author would leak
+      // the (constant) alphabetical order of players across categories,
+      // so we sort by answer text instead, empty answers last.
+      answers.sort((a, b) => {
+        if (!a.answer.text) return b.answer.text ? 1 : 0;
+        if (!b.answer.text) return -1;
+        return a.answer.text
           .toLowerCase()
-          .localeCompare(b.author.pseudonym.toLowerCase())
-      );
+          .localeCompare(b.answer.text.toLowerCase());
+      });
 
       return answers;
     },
 
     answer_accepted(category, uuid) {
       return is_answer_accepted(this.votes[category][uuid].votes);
+    },
+
+    is_revealed(category, uuid) {
+      return !!this.revealed_authors[category + "/" + uuid];
+    },
+
+    toggle_reveal(category, uuid) {
+      let key = category + "/" + uuid;
+      this.$set(this.revealed_authors, key, !this.revealed_authors[key]);
     },
 
     own_vote(category, uuid) {

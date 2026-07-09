@@ -9,8 +9,14 @@ User=nginx
 Group=nginx
 UMask=007
 
+# Websocket connections are only accepted from this origin (your public
+# domain, scheme included, no trailing slash). Leave unset to accept all.
+Environment=ALLOWED_ORIGIN=https://your-domain.example
+# Port the websocket server listens on (proxied by nginx, see nginx.conf).
+Environment=PITIT_BAC_WS_PORT=62868
+
 WorkingDirectory=/path/to/pitit-bac
-ExecStart=/path/to/pitit-bac/start-back.sh
+ExecStart=/path/to/pitit-bac/production/start-back.sh
 Restart=on-failure
 
 [Install]

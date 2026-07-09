@@ -2,11 +2,21 @@ import http from "http";
 
 import { v4 as uuid } from "uuid";
 
-import GameServer from "./server";
-import { log_info, log_err } from "./logging";
+import GameServer from "./server.js";
+import { log_info, log_err } from "./logging.js";
 
 const DEBUG = (process.env.NODE_ENV || 'development') != "production";
 const SERVER_PORT = process.env.PITIT_BAC_WS_PORT || 62868;
+
+// Last-resort safety nets: a single unvalidated message must never take the
+// server down for every player. Errors are logged and the process survives.
+process.on("unhandledRejection", err => {
+    log_err("Unhandled rejection: " + ((err && err.stack) || err));
+});
+
+process.on("uncaughtException", err => {
+    log_err("Uncaught exception: " + ((err && err.stack) || err));
+});
 
 let server = http.createServer(function(request, response) {
     if (request.url.startsWith("/munin")) return;

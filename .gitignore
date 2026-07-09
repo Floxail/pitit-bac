@@ -1,6 +1,29 @@
 # Statistics file
 
 back/data/statistics.json
+back/data/
+
+### AI agents & tooling ###
+
+# Claude Code
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# Generated knowledge graph (graphify)
+graphify-out/
+
+# AI-generated specs & plans
+docs/superpowers/
+
+# Other AI assistants
+.cursor/
+.cursorrules
+.aider*
+.github/copilot-instructions.md
+.mcp.json
+AGENTS.md
+GEMINI.md
 
 # Front build output
 dist/

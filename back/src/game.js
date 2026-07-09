@@ -1,5 +1,5 @@
 import { is_answer_valid, is_answer_accepted, compare_answers } from "ptitbac-commons";
-import { log_info } from "./logging";
+import { log_info } from "./logging.js";
 
 export class Game {
   constructor(slug, server) {
@@ -11,16 +11,34 @@ export class Game {
 
     this.players = {};
     this.master_player_uuid = null;
-    this.categories_by_everyone = false;
+
+    // Who can change the categories: "master" (game master only),
+    // "everyone", or "proposals" (each player can add ONE category to the
+    // list; the game master removes unwanted ones like any category).
+    this.categories_mode = "master";
+
+    // In "proposals" mode, tracks who proposed what, as category → uuid.
+    // Used to enforce the one-proposal-per-player rule and to display
+    // the proposer's name to everyone.
+    this.category_owners = {};
 
     // If the duration is set to this value, then the round will only
-    // stop when the first ends (if stopOnFirstCompletion) or when
+    // stop when the first ends (if endMode is "first") or when
     // all players end (else).
     this.infinite_duration = 600;
 
+    // Countdown duration used by the "timerAfterFirst" end mode when the
+    // configured time is infinite (the UI prevents this combination, but
+    // the server must not end up with an infinite countdown).
+    this.default_after_first_duration = 60;
+
     this.configuration = {
       categories: [],
-      stopOnFirstCompletion: true,
+      // How rounds end: "first" (first player to finish interrupts
+      // everyone), "timer" (global time limit only), or "timerAfterFirst"
+      // (no limit until the first player finishes, then a countdown of
+      // `time` seconds starts for everyone else).
+      endMode: "first",
       turns: 4,
       time: this.infinite_duration,
       alphabet: "",
@@ -51,6 +69,7 @@ export class Game {
     this.current_countdown_started = null;
     this.current_started = null;
     this.current_timeout = null;
+    this.current_round_ends_at = null;
     this.current_round_interrupted_by = null;
 
     this.current_round_answers_final_received = [];
@@ -85,6 +104,18 @@ export class Game {
   // second target array. Returns `true` if so, `false` else.
   static first_included_into_second(array, target) {
     return target.every(value => array.includes(value));
+  }
+
+  /**
+   * Sanitizes a client-provided categories list: strings only, trimmed,
+   * bounded in length and count, deduplicated.
+   */
+  static clean_categories(categories) {
+    return categories
+      .filter(c => typeof c === "string" || typeof c === "number")
+      .map(c => c.toString().trim())
+      .filter((c, i, all) => c && c.length <= 128 && all.indexOf(c) === i)
+      .slice(0, 50);
   }
 
   is_valid_player(uuid) {
@@ -207,8 +238,17 @@ export class Game {
     if (!this.just_created) this.send_message(uuid, "config-updated", { configuration: this.configuration });
     this.send_message(uuid, "game-locked", { locked: this.locked });
 
-    if (this.categories_by_everyone) {
-      this.send_message(uuid, "categories-by-everyone", { enabled: true });
+    if (this.categories_mode !== "master") {
+      this.send_message(uuid, "categories-mode", { mode: this.categories_mode });
+    }
+
+    if (Object.keys(this.category_owners).length > 0) {
+      this.send_message(uuid, "category-proposals", {
+        proposals: Object.keys(this.category_owners).map(category => ({
+          category,
+          uuid: this.category_owners[category]
+        }))
+      });
     }
 
     // And the game state if we're not in CONFIG
@@ -267,8 +307,11 @@ export class Game {
         let player = this.players[uuid];
 
         if (player) {
+          // left() clears player.connection — keep a reference so we can
+          // actually close it (a null connection used to crash the server).
+          let player_connection = player.connection;
           this.left(uuid, this.locked);
-          player.connection.close();
+          if (player_connection) player_connection.close();
         }
       }
     });
@@ -294,7 +337,7 @@ export class Game {
         catch_up.round = {
           round: this.current_round,
           letter: this.current_letter,
-          time_left: this.configuration.time !== this.infinite_duration ? (this.configuration.time - Math.floor((Date.now() - this.current_started) / 1000)) : null,
+          time_left: this.current_round_ends_at !== null ? Math.max(Math.ceil((this.current_round_ends_at - Date.now()) / 1000), 0) : null,
           players_ready: Object.keys(this.rounds[this.current_round].answers)
         };
         break;
@@ -334,25 +377,42 @@ export class Game {
 
     let configuration_accepted = true;
 
+    if (!Array.isArray(configuration.categories)) configuration_accepted = false;
+
     // If the configuration is updated by a non-master player,
     // we ignore it and send a configuration update with the current config
     // to erase client-side its changes.
-    // But if categories by everyone is enabled, we accept the change but only keep categories
-    // from the configuration sent, discarding everything else.
-    if (this.master_player_uuid !== uuid) {
-      if (!this.categories_by_everyone) {
-        configuration_accepted = false;
-      } else {
+    // In the "everyone" categories mode, we accept the change but only keep
+    // categories from the configuration sent, discarding everything else.
+    // In the "proposals" mode, we only accept adding/removing the player's
+    // own single proposal.
+    if (configuration_accepted && this.master_player_uuid !== uuid) {
+      if (this.categories_mode === "everyone") {
         // We only keep the categories, using the existing configuration for everything else.
         configuration = {
           ...this.configuration,
           ...{ categories: configuration.categories }
         }
+      } else if (this.categories_mode === "proposals") {
+        let categories = this.apply_category_proposal(
+          uuid,
+          Game.clean_categories(configuration.categories)
+        );
+
+        if (categories === null) {
+          configuration_accepted = false;
+        } else {
+          configuration = {
+            ...this.configuration,
+            ...{ categories }
+          };
+        }
+      } else {
+        configuration_accepted = false;
       }
     }
 
-    if (!Array.isArray(configuration.categories)) configuration_accepted = false;
-    if (!configuration.scores || typeof configuration.scores !== "object") configuration_accepted = false;
+    if (configuration_accepted && (!configuration.scores || typeof configuration.scores !== "object")) configuration_accepted = false;
 
     if (!configuration_accepted) {
       this.send_message(uuid, "config-updated", {configuration: this.configuration});
@@ -365,14 +425,15 @@ export class Game {
     }
 
     // Else we update the internal configuration and send the update to everyone.
+    // Everything client-provided is clamped: strings-only bounded categories,
+    // turns and time within sane limits (a time above the infinite threshold
+    // would overflow setTimeout and end rounds instantly).
     this.configuration = {
-      categories: configuration.categories
-      .filter((a, b) => configuration.categories.indexOf(a) === b)
-      .map(c => c.toString().trim()),
-      stopOnFirstCompletion: !!configuration.stopOnFirstCompletion,
-      turns: Math.max(Math.abs(parseInt(configuration.turns) || 4), 1),
-      time: Math.max(Math.abs(parseInt(configuration.time) || 400), 15),
-      alphabet: configuration.alphabet || "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      categories: Game.clean_categories(configuration.categories),
+      endMode: ["first", "timer", "timerAfterFirst"].includes(configuration.endMode) ? configuration.endMode : "first",
+      turns: Math.min(Math.max(Math.abs(parseInt(configuration.turns) || 4), 1), 30),
+      time: Math.min(Math.max(Math.abs(parseInt(configuration.time) || 400), 15), this.infinite_duration),
+      alphabet: (typeof configuration.alphabet === "string" && configuration.alphabet.slice(0, 128)) || "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
       scores: {
         valid: num_or_default(configuration.scores.valid, 10),
         duplicate: num_or_default(configuration.scores.duplicate, 5),
@@ -382,19 +443,85 @@ export class Game {
       }
     };
 
+    // Proposals removed by the master are freed, so their author can
+    // propose something else.
+    if (this.categories_mode === "proposals") {
+      this.sync_category_owners();
+      this.broadcast_category_proposals();
+    }
+
     this.broadcast("config-updated", {configuration: this.configuration});
   }
 
-  set_categories_by_everyone(uuid, enabled) {
+  set_categories_mode(uuid, mode) {
+    if (!["master", "everyone", "proposals"].includes(mode)) return;
+
     // If the player is not master, we reject this change and send it a reverse message to reset
     // its client to the correct state.
     if (this.master_player_uuid !== uuid) {
-      this.send_message(uuid, "categories-by-everyone", { enabled: !enabled });
+      this.send_message(uuid, "categories-mode", { mode: this.categories_mode });
       return;
     }
 
-    this.categories_by_everyone = enabled;
-    this.broadcast("categories-by-everyone", { enabled });
+    this.categories_mode = mode;
+    this.broadcast("categories-mode", { mode });
+
+    // Proposed categories stay in the configuration, but they are no
+    // longer marked as proposals outside of the proposals mode.
+    if (mode !== "proposals" && Object.keys(this.category_owners).length > 0) {
+      this.category_owners = {};
+      this.broadcast_category_proposals();
+    }
+  }
+
+  broadcast_category_proposals() {
+    this.broadcast("category-proposals", {
+      proposals: Object.keys(this.category_owners).map(category => ({
+        category,
+        uuid: this.category_owners[category]
+      }))
+    });
+  }
+
+  /**
+   * In "proposals" mode, a non-master player edits the categories through
+   * the regular configuration update, but is only allowed to add a single
+   * category of their own and to remove it. Returns the accepted categories
+   * list, or null if the change is not acceptable.
+   */
+  apply_category_proposal(uuid, new_categories) {
+    let current = this.configuration.categories;
+    let added = new_categories.filter(c => !current.includes(c));
+    let removed = current.filter(c => !new_categories.includes(c));
+
+    // Only their own proposal can be removed.
+    if (removed.some(c => this.category_owners[c] !== uuid)) return null;
+
+    // At most one new category…
+    if (added.length > 1) return null;
+
+    if (added.length === 1) {
+      // …and only if they don't already have a pending proposal (unless
+      // they are replacing it in the same update).
+      let own_proposals = Object.keys(this.category_owners)
+        .filter(c => this.category_owners[c] === uuid && !removed.includes(c));
+      if (own_proposals.length > 0) return null;
+    }
+
+    removed.forEach(c => delete this.category_owners[c]);
+    added.forEach(c => this.category_owners[c] = uuid);
+
+    return current.filter(c => !removed.includes(c)).concat(added);
+  }
+
+  // The master edits categories freely; proposals they remove are simply
+  // dropped, so their author can propose something else.
+  sync_category_owners() {
+    Object.keys(this.category_owners).forEach(category => {
+      if (!this.configuration.categories.includes(category)) {
+        delete this.category_owners[category];
+      }
+    });
   }
 
   elect_random_master() {
@@ -448,6 +575,11 @@ export class Game {
     if (this.configuration.alphabet.length === 0) return;
 
     this.log("Starting game");
+
+    // Once the game starts, proposed categories are part of the game:
+    // they are not tracked anymore.
+    this.category_owners = {};
+
     this.next_round();
 
     this.server.increment_statistic("games");
@@ -486,12 +618,30 @@ export class Game {
 
       this.current_started = Date.now();
 
-      if (this.configuration.time != this.infinite_duration) {
-        this.current_timeout = setTimeout(() => {
-          this.end_round();
-        }, this.configuration.time * 1000);
+      // In "timerAfterFirst" mode, the countdown only starts when the
+      // first player finishes (see receive_answers).
+      if (this.configuration.endMode !== "timerAfterFirst" && this.configuration.time != this.infinite_duration) {
+        this.arm_round_timeout(this.configuration.time);
       }
     }, this.ROUND_COUNTDOWN * 1000);
+  }
+
+  arm_round_timeout(duration) {
+    this.clear_round_timeout();
+
+    this.current_round_ends_at = Date.now() + duration * 1000;
+    this.current_timeout = setTimeout(() => {
+      this.end_round();
+    }, duration * 1000);
+  }
+
+  clear_round_timeout() {
+    if (this.current_timeout) {
+      clearTimeout(this.current_timeout);
+      this.current_timeout = null;
+    }
+
+    this.current_round_ends_at = null;
   }
 
   receive_answers(uuid, answers) {
@@ -502,12 +652,16 @@ export class Game {
     let all_valid = true;
 
     this.configuration.categories.forEach(category => {
-      if (Object.prototype.hasOwnProperty.call(answers, category)) {
-        let valid = is_answer_valid(this.current_letter, answers[category]);
+      // Only plain strings are acceptable answers — anything else coming
+      // from a forged client is treated as no answer (is_answer_valid
+      // throws on non-strings, which used to crash the server).
+      if (Object.prototype.hasOwnProperty.call(answers, category) && typeof answers[category] === "string") {
+        let answer = answers[category].slice(0, 256);
+        let valid = is_answer_valid(this.current_letter, answer);
         all_valid &= valid;
 
         checked_answers[category] = {
-          answer: answers[category],
+          answer: answer,
           valid: valid
         };
       }
@@ -525,9 +679,19 @@ export class Game {
     if (this.state == "ROUND_ANSWERS") {
       this.broadcast("player-ready", {player: {uuid: uuid}});
 
-      if (this.configuration.stopOnFirstCompletion) {
+      if (this.configuration.endMode === "first") {
         this.current_round_interrupted_by = uuid;
         this.end_round();
+      }
+
+      // First player to finish starts the countdown for everyone else.
+      else if (this.configuration.endMode === "timerAfterFirst" && !this.current_timeout) {
+        let duration = this.configuration.time != this.infinite_duration
+          ? this.configuration.time
+          : this.default_after_first_duration;
+
+        this.arm_round_timeout(duration);
+        this.broadcast("countdown-started", {duration});
       }
     }
     else {
@@ -559,6 +723,11 @@ export class Game {
 
   end_round() {
     if (this.state !== "ROUND_ANSWERS") return;
+
+    // The round may end before its timeout fires (first-completion or
+    // everyone answered); without this, the stale timeout would end the
+    // *next* round prematurely.
+    this.clear_round_timeout();
 
     this.state = "ROUND_ANSWERS_FINAL";
     this.broadcast("round-ended", {});
@@ -619,7 +788,7 @@ export class Game {
     // prevents abuses.)
     if (!author_answer) return;
 
-    author_answer.votes[uuid] = vote;
+    author_answer.votes[uuid] = !!vote;
     this.broadcast("vote-changed", {
       voter: {
           uuid: uuid
@@ -730,10 +899,11 @@ export class Game {
 
     this.state = "CONFIG";
 
+    this.clear_round_timeout();
+
     this.current_round = 0;
     this.current_letter = null;
     this.current_started = null;
-    this.current_timeout = null;
     this.current_round_interrupted_by = null;
 
     this.current_round_answers_final_received = [];

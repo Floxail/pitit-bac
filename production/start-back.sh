@@ -1,14 +1,14 @@
 #!/bin/sh
 
-# This bash file is intended to be run with the pitit-bac's root as
-# active directory.
+# This script is intended to be run with pitit-bac's root as the active
+# directory. The backend runs on any modern Node.js (18+); no version
+# manager is required.
 
-# Loads NVM
-. /path/to/.nvm/nvm.sh
-
-# Uses the correct NodeJS version (you may have to install the correct
-# version manually before running this script, using `nvm install`)
-nvm use
+# ALLOWED_ORIGIN restricts websocket connections to your own domain.
+# It is normally set by the systemd unit (see pitit-bac.service); the
+# fallback below is only used when running this script by hand.
+: "${ALLOWED_ORIGIN:=https://your-domain.example}"
+export ALLOWED_ORIGIN
 
 # Starts the backend server
 make start-back-production

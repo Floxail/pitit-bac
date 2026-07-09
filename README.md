@@ -54,16 +54,10 @@ $ make start
 $ make ui
 ```
 
-If something fail somewhere, first, ensure you're running the correct version of NodeJS:
+The project runs on any modern Node.js (18 or later). If something fail somewhere, first, ensure you're running a recent version of NodeJS:
 
 ```bash
-$ nvm use
-```
-
-You may have to install Node 16:
-
-```bash
-$ nvm install 16
+$ node -v
 ```
 
 To lint the front-end code, use:
@@ -81,11 +75,7 @@ Same as for the development, install all dependencies:
 $ make install
 ```
 
-Same as above, you may have to install Node 10 before:
-
-```bash
-$ nvm install 10
-```
+Before building, set your own domain in `front/.env.production` (`VUE_APP_URL`, used for social media previews), and your allowed websocket origin in `production/pitit-bac.service` (`ALLOWED_ORIGIN`).
 
 Then build the front-end for production:
 

@@ -13,7 +13,7 @@
     "@fortawesome/vue-fontawesome": "^0.1.9",
     "buefy": "^0.8.13",
     "core-js": "^3.6.4",
-    "morel-games-core": "git://github.com/MorelGames/morel-games-core.git",
+    "morel-games-core": "github:MorelGames/morel-games-core",
     "ptitbac-commons": "file:../commons",
     "slugify": "^1.4.0",
     "vue": "^2.6.11",

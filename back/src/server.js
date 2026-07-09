@@ -2,14 +2,18 @@ import crypto from "crypto";
 
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import { v4 as uuidv4 } from "uuid";
 import { server as WebSocketServer } from "websocket";
 
 import { Munin } from "munin-http";
 
-import { Game } from "./game";
-import { log_info, log_err, log_debug } from "./logging";
+import { Game } from "./game.js";
+import { log_info, log_err, log_debug } from "./logging.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STATISTICS_FILE = path.join(__dirname, "../data/statistics.json");
 
 export default class GameServer {
     constructor(http_server) {
@@ -28,7 +32,7 @@ export default class GameServer {
         this.setup_munin();
 
         try {
-          this.statistics = require("../data/statistics.json")
+          this.statistics = JSON.parse(fs.readFileSync(STATISTICS_FILE, "utf8"));
         }
         catch (e) {
           this.statistics = {};
@@ -108,10 +112,17 @@ export default class GameServer {
         this.statistics[name]++;
       }
 
-      fs.writeFile(path.join(__dirname, "../data/statistics.json"), JSON.stringify(this.statistics), err => {
-        if (err) {
-          log_err("Unable to write statistics file: "+ err);
+      fs.mkdir(path.dirname(STATISTICS_FILE), { recursive: true }, dir_err => {
+        if (dir_err) {
+          log_err("Unable to create statistics directory: " + dir_err);
+          return;
         }
+
+        fs.writeFile(STATISTICS_FILE, JSON.stringify(this.statistics), err => {
+          if (err) {
+            log_err("Unable to write statistics file: "+ err);
+          }
+        });
       });
     }
 
@@ -144,13 +155,44 @@ export default class GameServer {
             });
 
             connection.on('message', message => {
+                // A malformed or malicious message must never take the whole
+                // server down: parse and dispatch defensively, drop on error.
+                try {
+                    this.handle_raw_message(connection, message);
+                } catch (e) {
+                    log_err("Ignoring malformed message: " + (e && e.message));
+                }
+            });
+
+            connection.on('close', (reasonCode, description) => {
+                // We log it out from the game, if any.
+                let uuid = this.get_uuid_for_connection(connection);
+                let game = this.uuid_to_game[uuid];
+
+                if (game) {
+                    game.left(uuid);
+                }
+
+                // We DON'T remove the client' secret to allow for reconnection
+                // using the same UUID/secret.
+                delete this.clients[uuid];
+
+                this.clients_logged_out_at[uuid] = new Date().getTime();
+            });
+        });
+
+        this.start_cleanup_task();
+    }
+
+    handle_raw_message(connection, message) {
                 if (message.type === 'utf8') {
                     log_debug('[<-] ' + message.utf8Data);
                     let json_message = JSON.parse(message.utf8Data);
+                    if (!json_message || typeof json_message !== "object") return;
 
-                    let uuid = (json_message.uuid || "").toLowerCase().trim();
-                    let slug = (json_message.slug || "").toLowerCase().trim();
-                    let action = (json_message.action || "").toLowerCase().trim();
+                    let uuid = (typeof json_message.uuid === "string" ? json_message.uuid : "").toLowerCase().trim();
+                    let slug = (typeof json_message.slug === "string" ? json_message.slug : "").toLowerCase().trim();
+                    let action = (typeof json_message.action === "string" ? json_message.action : "").toLowerCase().trim();
 
                     if (!action) {
                         log_err("Ignoring action-less message from " + (uuid || "an unknown client") + ".");
@@ -205,28 +247,10 @@ export default class GameServer {
                         }
 
                         this.handle_message(connection, uuid, this.running_games[slug], action, json_message);
+                    }).catch(e => {
+                        log_err("Error while handling a '" + action + "' message: " + (e && e.stack || e));
                     });
                 }
-            });
-
-            connection.on('close', (reasonCode, description) => {
-                // We log it out from the game, if any.
-                let uuid = this.get_uuid_for_connection(connection);
-                let game = this.uuid_to_game[uuid];
-
-                if (game) {
-                    game.left(uuid);
-                }
-
-                // We DON'T remove the client' secret to allow for reconnection
-                // using the same UUID/secret.
-                delete this.clients[uuid];
-
-                this.clients_logged_out_at[uuid] = new Date().getTime();
-            });
-        });
-
-        this.start_cleanup_task();
     }
 
     start_cleanup_task() {
@@ -256,24 +280,29 @@ export default class GameServer {
 
     handle_message(connection, user_uuid, game, action, message) {
         switch (action) {
-            case "join-game":
+            case "join-game": {
                 if (!message.pseudonym) return;
+
+                let pseudonym = message.pseudonym.toString().trim().slice(0, 40);
+                if (!pseudonym) return;
+
                 if (game) {
-                    this.join_game(connection, user_uuid, message.pseudonym, game);
+                    this.join_game(connection, user_uuid, pseudonym, game);
                 }
                 else {
-                    this.create_game(connection, user_uuid, message.pseudonym);
+                    this.create_game(connection, user_uuid, pseudonym);
                 }
                 break;
+            }
 
             case "update-config":
                 if (!game || !message.configuration) return;
                 game.update_configuration(user_uuid, message.configuration);
                 break;
 
-            case "change-categories-by-everyone":
-                if (!game || !("enabled" in message)) return;
-                game.set_categories_by_everyone(user_uuid, message.enabled);
+            case "change-categories-mode":
+                if (!game || !message.mode) return;
+                game.set_categories_mode(user_uuid, message.mode);
                 break;
 
             case "lock-game":

@@ -18,6 +18,16 @@
       </template>
     </b-loading>
 
+    <button
+      class="theme-toggle"
+      :class="{ 'is-loading-blurred': has_fullscreen_message }"
+      :title="theme_toggle_label"
+      :aria-label="theme_toggle_label"
+      @click="toggle_theme"
+    >
+      <b-icon :icon="theme === 'dark' ? 'sun' : 'moon'" />
+    </button>
+
     <main>
       <div
         class="container"
@@ -25,12 +35,12 @@
         v-if="phase != 'PSEUDONYM'"
       >
         <div class="pititbac-logo is-mobile" aria-hidden="true">
-          <img src="./assets/logo.svg" alt="Pitit Bac" />
+          <img :src="logo" alt="Pitit Bac" />
         </div>
         <div class="columns layout-columns">
           <div class="column is-3">
             <div class="pititbac-logo">
-              <img src="./assets/logo.svg" alt="Pitit Bac" />
+              <img :src="logo" alt="Pitit Bac" />
             </div>
             <morel-players
               :master-confirm-message="
@@ -63,7 +73,7 @@
         <div class="columns">
           <div class="column is-half is-offset-3">
             <header class="init-logo">
-              <img src="./assets/logo.svg" alt="Pitit Bac" />
+              <img :src="logo" alt="Pitit Bac" />
             </header>
             <morel-ask-pseudonym />
           </div>
@@ -79,6 +89,11 @@
               >Amaury Carrade</a
             > </i18n
           >&nbsp;
+          <i18n path="and this version was forked by {name2}. ">
+          <a href="https://github.com/Floxail" slot="name2"
+              >Floxail</a
+            > </i18n
+          >
           <i18n path="This application is {open_source}.">
             <a
               href="https://github.com/MorelGames/pitit-bac"
@@ -110,9 +125,25 @@ export default {
       loading_reason: state => state.loading_reason,
       error: state => state.error
     }),
-    ...mapState(["sticky_players_list"]),
+    ...mapState(["sticky_players_list", "theme"]),
     has_fullscreen_message() {
       return !!this.loading || (!!this.error && !!this.error.title);
+    },
+    logo() {
+      return this.theme === "dark"
+        ? require("./assets/logo_w.svg")
+        : require("./assets/logo_b.svg");
+    },
+    theme_toggle_label() {
+      return this.theme === "dark"
+        ? this.$t("Switch to light mode")
+        : this.$t("Switch to dark mode");
+    }
+  },
+
+  methods: {
+    toggle_theme() {
+      this.$store.dispatch("toggle_theme");
     }
   },
 
@@ -133,16 +164,43 @@ export default {
 
 <style lang="sass">
 @import "~bulma/sass/utilities/_all"
-@import url("https://fonts.googleapis.com/css2?family=Fira+Sans:wght@200;400;600;700&display=swap")
 
 @import "assets/variables"
 
 @import "~bulma"
 @import "~buefy/src/scss/buefy"
 
+@import "assets/theme-8bit"
+@import "assets/theme-dark"
+
+// Theme tokens — light values ("paper Minitel": the CRT screen's negative,
+// blue-tinted white ground and blue-black ink).
+// Dark values live in assets/theme-dark.sass.
+\:root
+  --pb-bg: #f2f5f7
+  --pb-surface: #fbfcfd
+  --pb-surface-raised: #ffffff
+  --pb-surface-translucent: rgba(242, 245, 247, .88)
+  --pb-surface-sticky: #fbfcfd
+  --pb-overlay: rgba(242, 245, 247, .85)
+  --pb-page-text: #10161c
+  --pb-text-strong: #10161c
+  --pb-text-muted: #46525c
+  --pb-border: #10161c
+  --pb-border-light: #10161c
+  --pb-shadow: #10161c
+  --pb-titlebar-bg: #10161c
+  --pb-titlebar-text: #f2f5f7
+  --pb-accent: #52708a
+  --pb-taginput-disabled: #e7edf1
+  --pb-pulse-a: #10161c
+  --pb-pulse-b: #8494a1
+
 html, body
   overflow-y: auto
   min-height: 100vh
+
+  background-color: var(--pb-bg)
 
   +mobile
     overflow-x: hidden
@@ -151,15 +209,14 @@ html.overflow, html.overflow body
   overflow-y: unset
 
 #app
-  font-family: "Fira Sans", Avenir, Helvetica, Arial, sans-serif
-  -webkit-font-smoothing: antialiased
-  -moz-osx-font-smoothing: grayscale
+  font-family: "MS W98 UI", Tahoma, Geneva, Verdana, sans-serif
+  -webkit-font-smoothing: none
 
   display: flex
   flex-direction: column
   min-height: 100vh
 
-  color: #2c3e50
+  color: var(--pb-page-text)
   padding-top: 60px
 
   +mobile
@@ -185,7 +242,7 @@ html.overflow, html.overflow body
     flex-direction: column
 
     padding: 1em 20%
-    background-color: rgba(white, .8)
+    background-color: var(--pb-overlay)
 
     +mobile
       padding: 1em
@@ -263,13 +320,51 @@ html.overflow, html.overflow body
     position: sticky
     top: 10px
     z-index: 21
-    background-color: white
+    background-color: var(--pb-surface-sticky)
+
+.theme-toggle
+  position: fixed
+  top: 1rem
+  right: 1rem
+  z-index: 45
+
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 2.75rem
+  height: 2.75rem
+
+  border: 2px solid var(--pb-border)
+  border-radius: 0
+  background-color: var(--pb-surface-raised)
+  color: var(--pb-text-strong)
+  box-shadow: 3px 3px 0 var(--pb-shadow)
+
+  cursor: pointer
+
+  &:hover
+    color: var(--pb-accent)
+
+  &:active
+    transform: translate(3px, 3px)
+    box-shadow: none
+
+  &:focus-visible
+    outline: 2px solid var(--pb-accent)
+    outline-offset: 2px
+
+  &.is-loading-blurred
+    filter: blur(4px)
+
+  +mobile
+    top: .6rem
+    right: .6rem
 
 @keyframes pulse
   0%
-    color: $black
+    color: var(--pb-pulse-a)
   50%
-    color: $grey
+    color: var(--pb-pulse-b)
   100%
-    color: $black
+    color: var(--pb-pulse-a)
 </style>

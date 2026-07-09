@@ -7,8 +7,15 @@
         >
           <strong slot="letter">{{ letter }}</strong>
         </i18n>
-        <span v-if="stop_on_first_completion">
+        <span v-if="end_mode === 'first'">
           {{ $t("The first player to finish interrupts all the others!") }}
+        </span>
+        <span v-else-if="end_mode === 'timerAfterFirst'">
+          {{
+            $t(
+              "The first player to finish starts the countdown for all the others!"
+            )
+          }}
         </span>
       </b-notification>
       <div class="answers-form">
@@ -88,8 +95,7 @@ export default {
       slug: state => state.morel.slug,
       current_round: state => state.game.current_round,
       total_rounds: state => state.morel.configuration.turns,
-      stop_on_first_completion: state =>
-        state.morel.configuration.stopOnFirstCompletion,
+      end_mode: state => state.morel.configuration.endMode,
       categories: state => state.morel.configuration.categories,
       letter: state => state.game.current_round.letter,
       total_time: state => state.morel.configuration.time,
@@ -100,9 +106,12 @@ export default {
     ...mapGetters(["is_time_infinite"]),
 
     percent_time() {
-      return this.is_time_infinite
-        ? 100
-        : 100 - Math.floor((this.time_left / this.total_time) * 100);
+      if (this.is_time_infinite || this.time_left === -1) return 100;
+
+      return Math.min(
+        100 - Math.floor((this.time_left / this.total_time) * 100),
+        100
+      );
     },
 
     round_label() {
@@ -162,9 +171,13 @@ export default {
         return $t("Wait for the others…");
       } else if (!this.all_fields_completed) {
         return $t("Fill in all categories correctly before submitting");
-      } else if (this.stop_on_first_completion) {
+      } else if (this.end_mode === "first") {
         return $t(
           "Click here to submit your answers and interrupt all other players!"
+        );
+      } else if (this.end_mode === "timerAfterFirst" && this.time_left === -1) {
+        return $t(
+          "Click here to submit your answers and start the countdown for all other players!"
         );
       } else {
         return $t(
@@ -200,27 +213,51 @@ export default {
       }
     } catch {} // eslint-disable-line no-empty
 
-    if (!this.is_time_infinite) {
+    if (this.end_mode === "timerAfterFirst") {
+      // The countdown starts when the first player finishes: either we
+      // caught up mid-countdown (time_left already set), or we wait for
+      // the `countdown-started` message (watched through time_left).
+      if (this.time_left !== -1) {
+        this.start_countdown();
+      }
+    } else if (!this.is_time_infinite) {
       // If the time left is not -1, it was updated by the catch up message and
       // we should keep it.
       if (this.time_left === -1) {
         this.$store.commit("update_time_left", this.total_time);
       }
 
-      this.interval_id = setInterval(() => {
-        this.$store.commit("update_time_left", this.time_left - 1);
-        if (this.time_left == 0) {
-          clearInterval(this.interval_id);
-          this.$store.commit("update_time_left", -1);
-        }
-      }, 1000);
+      this.start_countdown();
     }
   },
   beforeDestroy() {
     clearInterval(this.interval_id);
     this.$store.commit("update_time_left", -1);
   },
+  watch: {
+    time_left(new_time_left) {
+      if (
+        this.end_mode === "timerAfterFirst" &&
+        !this.interval_id &&
+        new_time_left > 0
+      ) {
+        this.start_countdown();
+      }
+    }
+  },
   methods: {
+    start_countdown() {
+      if (this.interval_id) return;
+
+      this.interval_id = setInterval(() => {
+        this.$store.commit("update_time_left", this.time_left - 1);
+        if (this.time_left == 0) {
+          clearInterval(this.interval_id);
+          this.interval_id = null;
+          this.$store.commit("update_time_left", -1);
+        }
+      }, 1000);
+    },
     answers_updated() {
       this.$store.commit("update_round_answers", this.answers);
 

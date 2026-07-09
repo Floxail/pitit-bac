@@ -22,8 +22,8 @@ export default {
 $circular-progress-color: $primary !default
 $circular-progress-background-color: $less-dark !default
 $circular-progress-size: 8em !default
-$circular-progress-label-font-family: "Fira Sans" !default
-$circular-progress-label-font-weight: 200 !default
+$circular-progress-label-font-family: "MS W98 UI", Tahoma, Geneva, Verdana, sans-serif !default
+$circular-progress-label-font-weight: 700 !default
 $circular-progress-label-size: 0.34em !default
 $circular-progress-thickness: .12em !default
 

@@ -41,20 +41,28 @@ The client updates the configuration of the game.
             "Category 1",
             "Category 2"
         ],
-        "stopOnFirstCompletion": false,
+        "endMode": "first",
         "turns": 4,
         "time": 180
     }
 }
 ```
 
-If the client is not master and the _categories by everyone_ mode is disabled, or if the game's state is not `CONFIG`,
+`endMode` describes how rounds end:
+
+- `first`: the first player to finish interrupts everyone (the `time` limit still applies);
+- `timer`: the round only ends when the `time` limit is reached (or when everyone finished);
+- `timerAfterFirst`: no time limit until the first player finishes; then a countdown of `time` seconds starts for everyone else (see `countdown-started`).
+
+If the client is not master and the categories mode is `master`, or if the game's state is not `CONFIG`,
 the update will be ignored and a `config-updated` message will be replied with the previous configuration to reset it.
 
 Else, a `config-updated` message will be broadcasted to the players of the game (excluding the client that sent the message),
 and the new configuration saved server-side.
 
-If the _categories by everyone_ mode is enabled and the sender is not master, non-categories changes will be discarded.
+If the sender is not master, non-categories changes are always discarded. In the `everyone` categories mode the
+whole categories list is accepted; in the `proposals` mode only the sender's own single proposal may be added or
+removed (see `change-categories-mode`).
 
 ## `lock-game`
 
@@ -90,15 +98,26 @@ Asks the server to kick a specific player. If the sender is not master, the mess
 }
 ```
 
-## `change-categories-by-everyone`
+## `change-categories-mode`
 
-Changes whether everyone can edit the categories and not only the game master.
+Changes who can edit the categories. If the sender is not master, the message is ignored and a `categories-mode`
+message is replied with the current mode to reset the client.
 
 ```json
 {
-  "enabled": true
+  "mode": "master | everyone | proposals"
 }
 ```
+
+- `master`: only the game master can edit categories (default);
+- `everyone`: everyone can edit categories;
+- `proposals`: each non-master player may add a single category of their own to the list, through the regular
+  `update-config` message. The server only accepts, from a non-master player, the addition of one new category
+  (if the player has no pending proposal) and/or the removal of their own proposal; any other change is rejected
+  and the configuration is reset client-side. The game master removes unwanted proposals like any other category,
+  which frees the author to propose something else.
+
+Leaving the `proposals` mode keeps the proposed categories but stops tracking them as proposals.
 
 ## `start-game`
 
@@ -123,7 +142,8 @@ In the active part of a round, sends answers for the current letter.
 }
 ```
 
-If `stopOnFirstCompletion` is set to `true`, this will end the current round's active phase.
+If `endMode` is `first`, this will end the current round's active phase. If `endMode` is `timerAfterFirst` and no
+countdown is running yet, this starts the end-of-round countdown (see `countdown-started`).
 
 ## `send-vote`
 
@@ -275,7 +295,7 @@ Indicates that the game's config has changed.
             "Category 1",
             "Category 2"
         ],
-        "stopOnFirstCompletion": false,
+        "endMode": "first",
         "turns": 4,
         "time": 180
     }
@@ -292,14 +312,31 @@ Indicates that the game's locked (or not).
 }
 ```
 
-## `categories-by-everyone`
+## `categories-mode`
 
-Indicates whether everyone can edit the categories and not only the game master. This message is also sent to new
-players joining the game, if the mode is enabled.
+Indicates who can edit the categories (see `change-categories-mode`). This message is also sent to new players
+joining the game, if the mode is not `master`.
 
 ```json
 {
-  "enabled": true
+  "mode": "master | everyone | proposals"
+}
+```
+
+## `category-proposals`
+
+Broadcasts which of the configured categories are player proposals (in `proposals` categories mode), so clients
+can display who proposed what. Sent every time the configuration changes in this mode, and to new players joining
+the game if the list is not empty.
+
+```json
+{
+  "proposals": [
+    {
+      "category": "The proposed category",
+      "uuid": "the proposer's UUID"
+    }
+  ]
 }
 ```
 
@@ -350,7 +387,19 @@ Of this JSON message, only the `state` key and another relevant one is sent. The
 
 If the internal state is `ROUND_ANSWERS_FINAL`, we send `ROUND_ANSWERS` and consider that the final answers were sent (no time to fill them anyway).
 
-`time_left` is in seconds, and will be `null` for infinite rounds.
+`time_left` is in seconds, and will be `null` if no end-of-round countdown is currently running (infinite rounds,
+or `timerAfterFirst` mode before the first player finished).
+
+## `countdown-started`
+
+In `timerAfterFirst` end mode, indicates that the first player finished and that the end-of-round countdown
+started. The client should start a countdown of the given number of seconds.
+
+```json
+{
+  "duration": 60
+}
+```
 
 ## `round-starts-soon`
 

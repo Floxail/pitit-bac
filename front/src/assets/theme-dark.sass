@@ -1,0 +1,181 @@
+// Dark theme.
+//
+// Bulma/Buefy colors are compiled statically, so the dark theme is applied
+// through targeted overrides scoped under `html[data-theme="dark"]`, driven
+// by the tokens below. Light values for the same tokens live in App.vue.
+
+html[data-theme="dark"]
+  // Native Minitel: blue-black CRT ground, phosphor-white ink, title bars
+  // in the slate blue of the screen's inverted blocks.
+  --pb-bg: #0a0e11
+  --pb-surface: #0a0e11
+  --pb-surface-raised: #10161b
+  --pb-surface-translucent: rgba(10, 14, 17, .88)
+  --pb-surface-sticky: #0a0e11
+  --pb-overlay: rgba(10, 14, 17, .85)
+  --pb-page-text: #e6edf2
+  --pb-text-strong: #ffffff
+  --pb-text-muted: #9fb0bd
+  --pb-border: #e6edf2
+  --pb-border-light: #e6edf2
+  --pb-shadow: #e6edf2
+  --pb-titlebar-bg: #56718a
+  --pb-titlebar-text: #ffffff
+  --pb-accent: #86a5bf
+  --pb-taginput-disabled: #131a20
+  --pb-pulse-a: #e6edf2
+  --pb-pulse-b: #5d6d7a
+
+html[data-theme="dark"]
+  background-color: var(--pb-bg)
+
+  body
+    background-color: var(--pb-bg)
+    color: var(--pb-page-text)
+
+  strong, .title, .label, .modal-card-title
+    color: var(--pb-text-strong)
+
+  .subtitle, .help, #app .field .help
+    color: var(--pb-text-muted)
+
+  // ---- Surfaces ----
+
+  .box
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+  .notification:not(.is-primary):not(.is-dark):not(.is-danger):not(.is-warning):not(.is-info):not(.is-success):not(.is-light)
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+  .message:not(.is-primary):not(.is-dark) .message-body
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+  .message.is-primary .message-body
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+  .modal-card-head, .modal-card-foot
+    background-color: var(--pb-surface-raised)
+    border-color: var(--pb-border)
+
+  .modal-card-body
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+  // ---- Form controls ----
+
+  .input, .textarea, .taginput .taginput-container
+    background-color: var(--pb-surface-raised)
+    border-color: var(--pb-border)
+    color: var(--pb-page-text)
+
+    &::placeholder, input::placeholder
+      color: var(--pb-text-muted)
+
+  .taginput .taginput-container input
+    color: var(--pb-page-text)
+
+  .taginput .taginput-container[disabled]
+    background-color: var(--pb-taginput-disabled) !important
+    border-color: var(--pb-taginput-disabled) !important
+
+  .game-configuration input.input[disabled]
+    color: var(--pb-text-muted)
+
+  .button:not(.is-primary):not(.is-danger):not(.is-dark)
+    background-color: var(--pb-surface-raised)
+    border-color: var(--pb-border)
+    color: var(--pb-page-text)
+
+    &:hover
+      border-color: var(--pb-text-muted)
+
+  .tag:not(.is-primary):not(.is-primary-dark):not(.is-dark)
+    background-color: var(--pb-surface-raised)
+    color: var(--pb-page-text)
+
+  .dropdown-content
+    background-color: var(--pb-surface-raised)
+
+    .dropdown-item, div.dropdown-item
+      color: var(--pb-page-text)
+
+    a.dropdown-item:hover, a.dropdown-item.is-hovered
+      background-color: var(--pb-page-text)
+      color: var(--pb-bg)
+
+  .autocomplete .dropdown-content
+    background-color: var(--pb-surface-raised)
+
+  // Radios, checkboxes, switches
+  .b-radio.radio, .b-checkbox.checkbox, .switch
+    .control-label
+      color: var(--pb-page-text)
+
+  .b-radio.radio input[type="radio"] + .check
+    border-color: var(--pb-text-muted)
+
+  .b-checkbox.checkbox input[type="checkbox"] + .check
+    border-color: var(--pb-text-muted)
+
+  .game-configuration .switch[disabled] .control-label
+    color: var(--pb-page-text)
+
+  // Sliders
+  .b-slider .b-slider-track
+    background-color: var(--pb-border)
+
+  .b-slider .b-slider-tick
+    background-color: var(--pb-border)
+
+  .b-slider .b-slider-tick-label
+    color: var(--pb-text-muted)
+
+  // Tooltips (light variant used on the vote screen)
+  .b-tooltip.is-light:after
+    background-color: var(--pb-surface-raised)
+    color: var(--pb-page-text)
+
+  // ---- Morel components (players list, share box, pseudonym form) ----
+
+  .panel
+    .panel-heading
+      background-color: var(--pb-surface-raised)
+      color: var(--pb-text-strong)
+
+    .panel-block
+      background-color: var(--pb-surface)
+      color: var(--pb-page-text)
+      border-color: var(--pb-border-light)
+
+  .card
+    background-color: var(--pb-surface)
+    color: var(--pb-page-text)
+
+    .card-header-title
+      color: var(--pb-text-strong)
+
+  #app .morel-players-list.is-sticky
+    background-color: var(--pb-surface-sticky)
+
+  // ---- Vote screen ----
+
+  #app .notification.votes-header
+    background-color: var(--pb-surface-translucent)
+
+  .all-answers article.category-answers .answer ul.answer-meta a
+    color: var(--pb-page-text)
+
+  // ---- Footer & links ----
+
+  .footer, .footer .content
+    color: var(--pb-text-muted)
+
+  a:not(.button):not(.dropdown-item):not(.tag)
+    color: #9fb6c9
+
+    &:hover
+      color: #c1d2e0
